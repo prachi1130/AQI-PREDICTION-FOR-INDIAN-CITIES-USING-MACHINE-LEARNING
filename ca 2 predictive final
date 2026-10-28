@@ -1,0 +1,179 @@
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+# 1. Load the dataset
+df = pd.read_csv(r"C:\Users\HP\Downloads\archive (2)\archive (2)\aqi.csv")
+
+print("Dataset shape:", df.shape)
+print(df.head())
+
+df.columns = df.columns.str.strip().str.lower()
+
+# 2. Data cleaning
+df = df.dropna(subset=["aqi_value"])
+df["aqi_value"] = pd.to_numeric(df["aqi_value"], errors="coerce")
+df = df.dropna(subset=["aqi_value"])
+df = df[df["aqi_value"] >= 0]
+df = df.drop_duplicates()
+
+if "state" in df.columns:
+    df["state"] = df["state"].fillna("Unknown")
+
+if "area" in df.columns:
+    df["area"] = df["area"].fillna("Unknown")
+
+if "number_of_monitoring_stations" in df.columns:
+    df["number_of_monitoring_stations"] = pd.to_numeric(
+        df["number_of_monitoring_stations"], errors="coerce"
+    )
+    df["number_of_monitoring_stations"] = df[
+        "number_of_monitoring_stations"
+    ].fillna(df["number_of_monitoring_stations"].median())
+
+print("\nMissing values:")
+print(df.isnull().sum())
+
+# 3. Exploratory Data Analysis (EDA)
+print("\nAQI Summary:")
+print(df["aqi_value"].describe())
+
+plt.hist(df["aqi_value"], bins=30)
+plt.title("Distribution of AQI Values")
+plt.xlabel("AQI Value")
+plt.ylabel("Number of Records")
+plt.show()
+
+
+# Average AQI by state
+if "state" in df.columns:
+    df.groupby("state")["aqi_value"].mean().nlargest(10).plot(kind="bar")
+    plt.title("Top 10 States by Average AQI")
+    plt.xlabel("State")
+    plt.ylabel("Average AQI")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+
+# Air quality categories
+if "air_quality_status" in df.columns:
+    df["air_quality_status"].value_counts().plot(kind="bar")
+    plt.title("Air Quality Categories")
+    plt.xlabel("Category")
+    plt.ylabel("Number of Records")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+
+# 4. Correlation analysis
+numeric_df = df.select_dtypes(include="number")
+
+print("\nCorrelation with AQI:")
+print(numeric_df.corr()["aqi_value"].sort_values(ascending=False))
+
+sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm")
+plt.title("Correlation Heatmap")
+plt.tight_layout()
+plt.show()
+
+
+# 5. Select input features and target
+features = ["state", "area", "number_of_monitoring_stations"]
+features = [col for col in features if col in df.columns]
+
+X = df[features]
+y = df["aqi_value"]
+
+# Convert text columns into numeric columns
+X = pd.get_dummies(X, drop_first=True)
+
+print("\nInput features:", X.columns.tolist())
+
+
+# 6. Split the dataset
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+print("Training records:", len(X_train))
+print("Testing records:", len(X_test))
+
+
+# 7. Train Linear Regression
+model1 = LinearRegression()
+model1.fit(X_train, y_train)
+
+pred1 = model1.predict(X_test)
+
+print("\nLinear Regression Results")
+print("MAE:", mean_absolute_error(y_test, pred1))
+print("MSE:", mean_squared_error(y_test, pred1))
+print("RMSE:", np.sqrt(mean_squared_error(y_test, pred1)))
+print("R2 Score:", r2_score(y_test, pred1))
+
+
+# 8. Train Random Forest
+model2 = RandomForestRegressor(
+    n_estimators=100, random_state=42, min_samples_leaf=2, n_jobs=-1
+)
+model2.fit(X_train, y_train)
+
+pred2 = model2.predict(X_test)
+
+print("\nRandom Forest Results")
+print("MAE:", mean_absolute_error(y_test, pred2))
+print("MSE:", mean_squared_error(y_test, pred2))
+print("RMSE:", np.sqrt(mean_squared_error(y_test, pred2)))
+print("R2 Score:", r2_score(y_test, pred2))
+
+
+# 9. Compare the models
+results = pd.DataFrame({
+    "Model": ["Linear Regression", "Random Forest"],
+    "MAE": [
+        mean_absolute_error(y_test, pred1),
+        mean_absolute_error(y_test, pred2)
+    ],
+    "RMSE": [
+        np.sqrt(mean_squared_error(y_test, pred1)),
+        np.sqrt(mean_squared_error(y_test, pred2))
+    ],
+    "R2 Score": [
+        r2_score(y_test, pred1),
+        r2_score(y_test, pred2)
+    ]
+})
+
+print("\nModel Comparison:")
+print(results)
+
+best_predictions = pred1 if results.loc[0, "RMSE"] < results.loc[1, "RMSE"] else pred2
+best_name = results.loc[0, "Model"] if results.loc[0, "RMSE"] < results.loc[1, "RMSE"] else results.loc[1, "Model"]
+
+print("\nBest Model:", best_name)
+
+
+# 10. Actual vs Predicted AQI
+plt.scatter(y_test, best_predictions, alpha=0.4)
+plt.xlabel("Actual AQI")
+plt.ylabel("Predicted AQI")
+plt.title("Actual vs Predicted AQI")
+plt.show()
+
+# 11. Save project results
+os.makedirs("outputs", exist_ok=True)
+
+df.to_csv("outputs/aqi_cleaned.csv", index=False)
+results.to_csv("outputs/model_results.csv", index=False)
+
+print("\nProject completed successfully!")
+print("Results saved in the outputs folder.")
